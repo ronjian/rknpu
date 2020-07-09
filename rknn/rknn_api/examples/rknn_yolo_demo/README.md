@@ -10,7 +10,7 @@ make install
 ## install
 
 ```
-adb push install/rknn_yolo_demo /userdata/
+adb push install/rknn_yolo_demo /userdata/rknn_yolo_demo
 ```
 
 ## run

@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iostream>
 #include <sys/time.h>
+// #include "timer.h"
 
 #include "opencv2/core/core.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
@@ -32,6 +33,13 @@ using namespace cv;
 /*-------------------------------------------
                   Functions
 -------------------------------------------*/
+static inline uint64_t getTimeInUs() {
+    uint64_t time;
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    time = static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    return time;
+}
 
 static void printRKNNTensor(rknn_tensor_attr *attr) {
     printf("index=%d name=%s n_dims=%d dims=[%d %d %d %d] n_elems=%d size=%d fmt=%d type=%d qnt_type=%d fl=%d zp=%d scale=%f\n", 
@@ -81,6 +89,7 @@ int main(int argc, char** argv)
     const char *img_path = argv[2];
 
     // Load image
+    auto tic = getTimeInUs();
     cv::Mat orig_img = cv::imread(img_path, 1);
     cv::Mat img = orig_img.clone();
     if(!orig_img.data) {
@@ -91,16 +100,20 @@ int main(int argc, char** argv)
         printf("resize %d %d to %d %d\n", orig_img.cols, orig_img.rows, img_width, img_height);
         cv::resize(orig_img, img, cv::Size(img_width, img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
     }
+    printf("Load image costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f); // 7.653ms
 
     // Load RKNN Model
+    tic = getTimeInUs();
     model = load_model(model_path, &model_len);
     ret = rknn_init(&ctx, model, model_len, 0);
     if(ret < 0) {
         printf("rknn_init fail! ret=%d\n", ret);
         return -1;
     }
+    printf("Load model costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f); // 55754.215ms
 
     // Get Model Input Output Info
+    tic = getTimeInUs();
     rknn_input_output_num io_num;
     ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
     if (ret != RKNN_SUCC) {
@@ -134,50 +147,63 @@ int main(int argc, char** argv)
         }
         printRKNNTensor(&(output_attrs[i]));
     }
+    printf("Prepare costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f);
 
-    // Set Input Data
-    rknn_input inputs[1];
-    memset(inputs, 0, sizeof(inputs));
-    inputs[0].index = 0;
-    inputs[0].type = RKNN_TENSOR_UINT8;
-    inputs[0].size = img.cols*img.rows*img.channels();
-    inputs[0].fmt = RKNN_TENSOR_NHWC;
-    inputs[0].buf = img.data;
+    const int loop_count = 100;
+    float inference_cost = 0.0;
+    float postprecess_cost = 0.0;
+    for (int i = 0; i < loop_count; i++){
+        // Set Input Data
+        rknn_input inputs[1];
+        memset(inputs, 0, sizeof(inputs));
+        inputs[0].index = 0;
+        inputs[0].type = RKNN_TENSOR_UINT8;
+        inputs[0].size = img.cols*img.rows*img.channels();
+        inputs[0].fmt = RKNN_TENSOR_NHWC;
+        inputs[0].buf = img.data;
 
-    ret = rknn_inputs_set(ctx, io_num.n_input, inputs);
-    if(ret < 0) {
-        printf("rknn_input_set fail! ret=%d\n", ret);
-        return -1;
-    }
-
-    // Run
-    printf("rknn_run\n");
-    ret = rknn_run(ctx, nullptr);
-    if(ret < 0) {
-        printf("rknn_run fail! ret=%d\n", ret);
-        return -1;
-    }
-
-    // Get Output
-    rknn_output outputs[1];
-    memset(outputs, 0, sizeof(outputs));
-    outputs[0].want_float = 1;
-    ret = rknn_outputs_get(ctx, 1, outputs, NULL);
-    if(ret < 0) {
-        printf("rknn_outputs_get fail! ret=%d\n", ret);
-        return -1;
-    }
-
-    // Post Process
-    for (int i = 0; i < output_attrs[0].n_elems; i++) {
-        float val = ((float*)(outputs[0].buf))[i];
-        if (val > 0.01) {
-            printf("%d - %f\n", i, val);
+        ret = rknn_inputs_set(ctx, io_num.n_input, inputs);
+        if(ret < 0) {
+            printf("rknn_input_set fail! ret=%d\n", ret);
+            return -1;
         }
-    }
+        // Run
+        printf("rknn_run\n");
+        tic = getTimeInUs();
+        ret = rknn_run(ctx, nullptr);
+        if(ret < 0) {
+            printf("rknn_run fail! ret=%d\n", ret);
+            return -1;
+        }
 
-    // Release rknn_outputs
-    rknn_outputs_release(ctx, 1, outputs);
+        // Get Output
+        rknn_output outputs[1];
+        memset(outputs, 0, sizeof(outputs));
+        outputs[0].want_float = 1;
+        ret = rknn_outputs_get(ctx, 1, outputs, NULL);
+        if(ret < 0) {
+            printf("rknn_outputs_get fail! ret=%d\n", ret);
+            return -1;
+        }
+        // printf("Inference costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f);
+        inference_cost += (getTimeInUs() - tic) / 1000.0f;
+
+        // Post Process
+        tic = getTimeInUs();
+        for (int i = 0; i < output_attrs[0].n_elems; i++) {
+            float val = ((float*)(outputs[0].buf))[i];
+            if (val > 0.01) {
+                printf("%d - %f\n", i, val);
+            }
+        }
+
+        // Release rknn_outputs
+        rknn_outputs_release(ctx, 1, outputs);
+        // printf("PostPrecess costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f);
+        postprecess_cost += (getTimeInUs() - tic) / 1000.0f;
+    }
+    printf("Inference costs %8.3fms\n", inference_cost / loop_count); // 10.172ms
+    printf("PostPrecess costs %8.3fms\n", postprecess_cost / loop_count); // 0.380ms
 
     // Release
     if(ctx >= 0) {

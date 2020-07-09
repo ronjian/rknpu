@@ -5,11 +5,13 @@
 #include <sys/time.h>
 #include "ssd.h"
 
-#define BOX_PRIORS_TXT_PATH "./box_priors.txt"
-#define LABEL_NALE_TXT_PATH "./coco_labels_list.txt"
+// #define BOX_PRIORS_TXT_PATH "./box_priors.txt"
+// #define LABEL_NALE_TXT_PATH "./coco_labels_list.txt"
+#define BOX_PRIORS_TXT_PATH "./rockrobo_box_priors.txt"
+#define LABEL_NALE_TXT_PATH "./rockrobo_labels_list.txt"
 
-float MIN_SCORE = 0.4f;
-float NMS_THRESHOLD = 0.45f;
+float MIN_SCORE = 0.5f;
+float NMS_THRESHOLD = 0.9f;
 
 static char *labels[NUM_CLASS];
 static float box_priors[4][NUM_RESULTS];
@@ -70,7 +72,7 @@ int readLines(const char *fileName, char *lines[], int max_line)
 
 int loadLabelName(const char* locationFilename, char* label[])
 {
-	printf("ssd - loadLabelName");
+	// printf("ssd - loadLabelName\n");
 	readLines(locationFilename, label, NUM_CLASS);
     return 0;
 }
@@ -145,9 +147,17 @@ int filterValidResult(float * outputClasses, int (*output)[NUM_RESULTS], int num
 {
     int validCount = 0;
 	float min_score = unexpit(MIN_SCORE);
-
+    // printf("min_score %f\n", min_score);
     // Scale them back to the input size.
+    // TODO: issue, i >= 1911 looks strange:
+    // topClassScore 11.90, topClassScoreIndex   26, i 1911, validCount    1, final score 1.00
+    // topClassScore 11.27, topClassScoreIndex   25, i 1912, validCount    2, final score 1.00
+    // topClassScore 11.14, topClassScoreIndex    8, i 1913, validCount    3, final score 1.00
+    // topClassScore 11.06, topClassScoreIndex    3, i 1914, validCount    4, final score 1.00
+    // topClassScore 10.51, topClassScoreIndex   24, i 1915, validCount    5, final score 1.00
+    // topClassScore 11.98, topClassScoreIndex   25, i 1916, validCount    6, final score 1.00
     for (int i = 0; i < NUM_RESULTS; ++i) {
+    // for (int i = 0; i < 1911; ++i) {
         float topClassScore = (float)(-1000.0);
         int topClassScoreIndex = -1;
 
@@ -156,22 +166,22 @@ int filterValidResult(float * outputClasses, int (*output)[NUM_RESULTS], int num
 			// x and expit(x) has same monotonicity
 			// so compare x and comare expit(x) is same
             //float score = expit(outputClasses[i*numClasses+j]);
-            float score = outputClasses[i*numClasses+j];
+            float score = outputClasses[i*numClasses+j]; // 230040 = 1917 * 30 * 4
 
             if (score > topClassScore) {
                 topClassScoreIndex = j;
                 topClassScore = score;
             }
         }
-
+        // printf("topClassScore %4.2f, unexpit result %4.2f\n", topClassScore, unexpit(topClassScore));
         if (topClassScore >= min_score) {
             output[0][validCount] = i;
             output[1][validCount] = topClassScoreIndex;
             props[validCount] = expit(outputClasses[i*numClasses+topClassScoreIndex]);
+            printf("topClassScore %4.2f, topClassScoreIndex %4d, i %4d, validCount %4d, final score %4.2f\n", topClassScore, topClassScoreIndex, i, validCount, props[validCount]);
             ++validCount;
         }
     }
-
     return validCount;
 }
 
@@ -271,8 +281,7 @@ int postProcessSSD(float * predictions, float *output_classes, int width, int he
 		// for (int i = 0; i < 91; i++) {
 			// printf("%s\n", labels[i]);
 		// }
-
-		printf("loadBoxPriors\n");
+        printf("loadBoxPriors\n");  
 		ret = loadBoxPriors(BOX_PRIORS_TXT_PATH, box_priors);
 		if (ret < 0) {
 			return -1;
@@ -290,16 +299,12 @@ int postProcessSSD(float * predictions, float *output_classes, int width, int he
     float props[NUM_RESULTS];
     memset(output, 0, 2*NUM_RESULTS);
     memset(props, 0, sizeof(float)*NUM_RESULTS);
-
     decodeCenterSizeBoxes(predictions, box_priors);
-
     int validCount = filterValidResult(output_classes, output, NUM_CLASS, props);
-
     if (validCount > OBJ_NUMB_MAX_SIZE) {
-        printf("validCount too much !!\n");
+        printf("validCount %4d too much !!\n", validCount);
         return -1;
     }
-
     sort(output, props, validCount);
 
     /* detect nest box */

@@ -47,7 +47,13 @@ const string class_name[] = { "person", "bicycle", "car","motorbike ","aeroplane
 /*-------------------------------------------
                   Functions
 -------------------------------------------*/
-
+static inline uint64_t getTimeInUs() {
+    uint64_t time;
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    time = static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    return time;
+}
 static void printRKNNTensor(rknn_tensor_attr *attr) {
     printf("index=%d name=%s n_dims=%d dims=[%d %d %d %d] n_elems=%d size=%d fmt=%d type=%d qnt_type=%d fl=%d zp=%d scale=%f\n", 
             attr->index, attr->name, attr->n_dims, attr->dims[3], attr->dims[2], attr->dims[1], attr->dims[0], 
@@ -96,6 +102,7 @@ int main(int argc, char** argv)
     const char *img_path = argv[2];
 
     // Load image
+    auto tic = getTimeInUs();
     cv::Mat orig_img = cv::imread(img_path, 1);
     cv::Mat img = orig_img.clone();
     if(!orig_img.data) {
@@ -106,14 +113,17 @@ int main(int argc, char** argv)
         printf("resize %d %d to %d %d\n", orig_img.cols, orig_img.rows, img_width, img_height);
         cv::resize(orig_img, img, cv::Size(img_width, img_height), (0, 0), (0, 0), cv::INTER_LINEAR);
     }
+    printf("Load image costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f); // 84.721ms
 
     // Load RKNN Model
+    tic = getTimeInUs();
     model = load_model(model_path, &model_len);
     ret = rknn_init(&ctx, model, model_len, 0);
     if(ret < 0) {
         printf("rknn_init fail! ret=%d\n", ret);
         return -1;
     }
+    printf("Load model costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f); // 21238.840ms
 
     // Get Model Input Output Info
     rknn_input_output_num io_num;
@@ -149,66 +159,79 @@ int main(int argc, char** argv)
         }
         printRKNNTensor(&(output_attrs[i]));
     }
-
-    // Set Input Data
-    rknn_input inputs[1];
-    memset(inputs, 0, sizeof(inputs));
-    inputs[0].index = 0;
-    inputs[0].type = RKNN_TENSOR_UINT8;
-    inputs[0].size = img.cols*img.rows*img.channels();
-    inputs[0].fmt = RKNN_TENSOR_NHWC;
-    inputs[0].buf = img.data;
-
-    ret = rknn_inputs_set(ctx, io_num.n_input, inputs);
-    if(ret < 0) {
-        printf("rknn_input_set fail! ret=%d\n", ret);
-        return -1;
-    }
-
     // Run
-    printf("rknn_run\n");
-    ret = rknn_run(ctx, nullptr);
-    if(ret < 0) {
-        printf("rknn_run fail! ret=%d\n", ret);
-        return -1;
+    const int loop_count = 100;
+    float preprocess_cost = 0.0;
+    float inference_cost = 0.0;
+    float postprecess_cost = 0.0;
+    for (int i = 0; i < loop_count; i++){
+        // Set Input Data
+        tic = getTimeInUs();
+        rknn_input inputs[1];
+        memset(inputs, 0, sizeof(inputs));
+        inputs[0].index = 0;
+        inputs[0].type = RKNN_TENSOR_UINT8;
+        inputs[0].size = img.cols*img.rows*img.channels();
+        inputs[0].fmt = RKNN_TENSOR_NHWC;
+        inputs[0].buf = img.data;
+
+        ret = rknn_inputs_set(ctx, io_num.n_input, inputs);
+        if(ret < 0) {
+            printf("rknn_input_set fail! ret=%d\n", ret);
+            return -1;
+        }
+        preprocess_cost += (getTimeInUs() - tic) / 1000.0f;
+        printf("rknn_run\n");
+        
+        ret = rknn_run(ctx, nullptr);
+        if(ret < 0) {
+            printf("rknn_run fail! ret=%d\n", ret);
+            return -1;
+        }
+
+        // Get Output
+        rknn_output outputs[2];
+        memset(outputs, 0, sizeof(outputs));
+        outputs[0].want_float = 1;
+        outputs[1].want_float = 1;
+        ret = rknn_outputs_get(ctx, io_num.n_output, outputs, NULL);
+        if(ret < 0) {
+            printf("rknn_outputs_get fail! ret=%d\n", ret);
+            return -1;
+        }
+        inference_cost += (getTimeInUs() - tic) / 1000.0f;
+
+        // Post Process
+        tic = getTimeInUs();
+        float out_pos[500*4];
+        float out_prop[500];
+        int out_label[500];
+        int obj_num = 0;
+        obj_num = yolov3_post_process((float *)(outputs[0].buf), (float *)(outputs[1].buf), out_pos, out_prop, out_label);
+        // Release rknn_outputs
+        rknn_outputs_release(ctx, 2, outputs);
+        postprecess_cost += (getTimeInUs() - tic) / 1000.0f;
+
+        // Draw Objects
+        for (int i = 0; i < obj_num; i++) {
+            printf("%s @ (%f %f %f %f) %f\n",
+                    class_name[out_label[i]].c_str(),
+                    out_pos[4*i+0], out_pos[4*i+1], out_pos[4*i+2], out_pos[4*i+3],
+                    out_prop[i]);
+            int x1 = out_pos[4*i+0] * orig_img.cols;
+            int y1 = out_pos[4*i+1] * orig_img.rows;
+            int x2 = out_pos[4*i+2] * orig_img.cols;
+            int y2 = out_pos[4*i+3] * orig_img.rows;
+            rectangle(orig_img, Point(x1, y1), Point(x2, y2), Scalar(255, 0, 0, 255), 3);
+            putText(orig_img, class_name[out_label[i]].c_str(), Point(x1, y1 - 12), 1, 2, Scalar(0, 255, 0, 255));
+        }
+
+        imwrite("./out.jpg", orig_img);
+        
     }
-
-    // Get Output
-    rknn_output outputs[2];
-    memset(outputs, 0, sizeof(outputs));
-    outputs[0].want_float = 1;
-    outputs[1].want_float = 1;
-    ret = rknn_outputs_get(ctx, io_num.n_output, outputs, NULL);
-    if(ret < 0) {
-        printf("rknn_outputs_get fail! ret=%d\n", ret);
-        return -1;
-    }
-
-    float out_pos[500*4];
-    float out_prop[500];
-    int out_label[500];
-    int obj_num = 0;
-
-    // Post Process
-    obj_num = yolov3_post_process((float *)(outputs[0].buf), (float *)(outputs[1].buf), out_pos, out_prop, out_label);
-    // Release rknn_outputs
-    rknn_outputs_release(ctx, 2, outputs);
-
-    // Draw Objects
-    for (int i = 0; i < obj_num; i++) {
-        printf("%s @ (%f %f %f %f) %f\n",
-                class_name[out_label[i]].c_str(),
-                out_pos[4*i+0], out_pos[4*i+1], out_pos[4*i+2], out_pos[4*i+3],
-                out_prop[i]);
-        int x1 = out_pos[4*i+0] * orig_img.cols;
-        int y1 = out_pos[4*i+1] * orig_img.rows;
-        int x2 = out_pos[4*i+2] * orig_img.cols;
-        int y2 = out_pos[4*i+3] * orig_img.rows;
-        rectangle(orig_img, Point(x1, y1), Point(x2, y2), Scalar(255, 0, 0, 255), 3);
-        putText(orig_img, class_name[out_label[i]].c_str(), Point(x1, y1 - 12), 1, 2, Scalar(0, 255, 0, 255));
-    }
-
-    imwrite("./out.jpg", orig_img);
+    printf("Preprocess costs %8.3fms\n", preprocess_cost / loop_count); // 4.957ms
+    printf("Inference costs %8.3fms\n", inference_cost / loop_count); // 29.700ms
+    printf("PostPrecess costs %8.3fms\n", postprecess_cost / loop_count); // 23.730ms
 
     // Release
     if(ctx >= 0) {
