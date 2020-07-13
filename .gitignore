@@ -1,1 +1,6 @@
 .gitreview
+rknn/rknn_api/examples/rknn_ssd_demo/baiguang-txt*
+build
+install
+*.tfrecord
+

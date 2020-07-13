@@ -121,7 +121,8 @@ int main(int argc, char** argv)
     auto tic = getTimeInUs();
     printf("Loading model ...\n");
     model = load_model(model_path, &model_len);
-    ret = rknn_init(&ctx, model, model_len, 0);
+    // ret = rknn_init(&ctx, model, model_len, RKNN_FLAG_COLLECT_PERF_MASK);
+    ret = rknn_init(&ctx, model, model_len, RKNN_FLAG_PRIOR_HIGH);
     if(ret < 0) {
         printf("rknn_init fail! ret=%d\n", ret);
         return -1;
@@ -241,6 +242,14 @@ int main(int argc, char** argv)
             return -1;
         }
         getoutput_cost += (getTimeInUs() - tic);
+
+        // rknn_perf_run perf_run;
+        // ret = rknn_query(ctx, RKNN_QUERY_PERF_RUN, &perf_run, sizeof(rknn_perf_run));
+        // printf("run_duration is %ld\n", perf_run.run_duration);
+
+        // rknn_perf_detail perf_detail; 
+        // ret = rknn_query(ctx, RKNN_QUERY_PERF_DETAIL, &perf_detail, sizeof(rknn_perf_detail)); 
+        // printf("%s", perf_detail.perf_data);
 
         // Post Process
         tic = getTimeInUs();
