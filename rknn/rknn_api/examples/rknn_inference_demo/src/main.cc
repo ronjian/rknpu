@@ -88,9 +88,12 @@ int main(int argc, char** argv)
     const char *model_path = argv[1];
     const char *img_path = argv[2];
     char *img_width_char = argv[3];
-    const int img_width = (int)*img_width_char;
+    const int img_width = atoi(img_width_char);
     char *img_height_char = argv[4];
-    const int img_height = (int)*img_height_char;
+    const int img_height = atoi(img_height_char);
+
+    // const int img_width = 640;
+    // const int img_height =  640;
 
     // Load image
     auto tic = getTimeInUs();
@@ -154,7 +157,7 @@ int main(int argc, char** argv)
     printf("Prepare costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f);
     printf("input count is %d\n", io_num.n_input);
 
-    const int loop_count = 20;
+    const int loop_count = 50;
     float setinput_cost = 0.0;
     float inference_cost = 0.0;
     float getoutput_cost = 0.0;
@@ -164,8 +167,9 @@ int main(int argc, char** argv)
         // rknn_input inputs[1];
         rknn_input inputs[io_num.n_input];
         memset(inputs, 0, sizeof(inputs));
+        printf("inputs count is %d", io_num.n_input);
         for (uint32_t in_i = 0; in_i < io_num.n_input; in_i++) {
-            inputs[in_i].index = 0;
+            inputs[in_i].index = in_i;
             inputs[in_i].type = RKNN_TENSOR_UINT8;
             inputs[in_i].size = img.cols*img.rows*img.channels();
             inputs[in_i].fmt = RKNN_TENSOR_NHWC;

@@ -3,4 +3,5 @@ rknn/rknn_api/examples/rknn_ssd_demo/baiguang-txt*
 build
 install
 *.tfrecord
+rknn/rknn_api/examples/rknn_centernet_demo/baiguang*
 

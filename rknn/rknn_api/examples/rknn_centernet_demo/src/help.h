@@ -2,6 +2,8 @@
 
 using namespace std;
 
+
+
 const int image_width = 384;
 const int image_height = 288;
 const int img_channels = 3;
@@ -18,6 +20,9 @@ const int C = 29;
 const int H = 72;
 const int W = 96;
 const int images_cnt = 2109;
+
+
+
 
 const string labelsMap[29] = {"wire",
                             "pet-feces",
