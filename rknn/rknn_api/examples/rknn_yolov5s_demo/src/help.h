@@ -1,4 +1,7 @@
 #include <string>
+#include "opencv2/core/core.hpp"
+// #include "opencv2/imgproc/imgproc.hpp"
+// #include "opencv2/highgui/highgui.hpp"
 
 using namespace std;
 
@@ -23,36 +26,49 @@ const int H = 72;
 const int W = 96;
 const int images_cnt = 2109;
 
-const string labelsMap[29] = {"wire",
-                            "pet-feces",
-                            "shoe",
-                            "bar-stool-a",
-                            "fan",
-                            "power-strip",
-                            "dock(ruby)",
-                            "dock(rubys+tanosv)",
-                            "bar-stool-b",
-                            "scale",
-                            "clothing-item",
-                            "cleaning-robot",
-                            "fan-b",
-                            "door-mark-a",
-                            "door-mark-b",
-                            "wheel",
-                            "door-mark-c",
-                            "flat-base",
-                            "whole-fan",
-                            "whole-fan-b",
-                            "whole-bar-stool-a",
-                            "whole-bar-stool-b",
-                            "fake-poop-a",
-                            "dust-pan",
-                            "folding-chair",
-                            "laundry-basket",
-                            "handheld-cleaner",
-                            "sock",
-                            "fake-poop-b"
+struct BoxCornerEncoding
+{
+  float ymin;
+  float xmin;
+  float ymax;
+  float xmax;
+};
+
+typedef vector<BoxCornerEncoding> PredictBoxes;
+typedef vector<float> PredictScores;
+
+const string originLabelsMap[30] = {"background"
+                                    ,"wire"
+                                    ,"pet-feces"
+                                    ,"shoe"
+                                    ,"bar-stool-a"
+                                    ,"fan"
+                                    ,"power-strip"
+                                    ,"dock(ruby)"
+                                    ,"dock(rubys+tanosv)"
+                                    ,"bar-stool-b"
+                                    ,"scale"
+                                    ,"clothing-item"
+                                    ,"cleaning-robot"
+                                    ,"fan-b"
+                                    ,"door-mark-a"
+                                    ,"door-mark-b"
+                                    ,"wheel"
+                                    ,"door-mark-c"
+                                    ,"flat-base"
+                                    ,"whole-fan"
+                                    ,"whole-fan-b"
+                                    ,"whole-bar-stool-a"
+                                    ,"whole-bar-stool-b"
+                                    ,"fake-poop-a"
+                                    ,"fake-poop-b"
+                                    ,"dust-pan"
+                                    ,"folding-chair"
+                                    ,"laundry-basket"
+                                    ,"handheld-cleaner"
+                                    ,"sock"
     };
+
 
 const string img_names[images_cnt] = {
     "StereoVision_L_1000165_10_0_0_647.jpeg",

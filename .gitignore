@@ -5,3 +5,5 @@ install
 *.tfrecord
 rknn/rknn_api/examples/rknn_centernet_demo/baiguang*
 
+**/txt/
+**/vis/
