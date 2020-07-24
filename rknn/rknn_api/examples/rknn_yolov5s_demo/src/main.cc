@@ -92,8 +92,8 @@ vector<size_t>
 nms_single_class (
   const PredictBoxes& boxes,
   const PredictScores& scores,
-  float confidence_threshold=0.01,
-  float iou_threshold=0.7)
+  float confidence_threshold=0.0,
+  float iou_threshold=0.65)
 {
   vector<size_t> desc_ind = argsort_descend (scores);
   vector<int> suppression;
@@ -295,7 +295,7 @@ void parse_det(float * an, const int an_h, const int an_w, const float an_s
                     b_h = pow((b_h * 2.0), 2) * an_wh[c / an_vec][1];
                 } else if (c % an_vec == 4) {
                     obj_conf = val;
-                    if (obj_conf > 0.001) {
+                    if (obj_conf > THRESHOLD) {
                         BoxCornerEncoding box = {};
                         box.ymin = clip((c_y - b_h / 2.0 - pad_top) / resize_h) * origin_height;
                         box.xmin = clip((c_x - b_w / 2.0 - pad_left) / resize_w) * origin_width;
@@ -304,7 +304,7 @@ void parse_det(float * an, const int an_h, const int an_w, const float an_s
                         pred_boxes.emplace_back (box);
                     }
                 } else {
-                    if (obj_conf > 0.001) {
+                    if (obj_conf > THRESHOLD) {
                         pred_scores[c % an_vec - 4].emplace_back (obj_conf * val);
                     }
                 }
@@ -379,7 +379,9 @@ int main(int argc, char** argv)
     int inputcost = 0;
     int infercost = 0;
     int outputcost = 0;
-    int postcost = 0;
+    int decodecost = 0;
+    int nmscost = 0;
+    int nmshandling_cnt = 0;
     for (int img_idx = 0; img_idx < images_cnt; img_idx++) {
         string img_name = img_names[img_idx];
         // if (img_name != "StereoVision_L_922887_32_0_1_7156.jpeg") {
@@ -459,8 +461,10 @@ int main(int argc, char** argv)
         parse_det((float *)outputs[2].buf, 16, 21, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
         parse_det((float *)outputs[1].buf, 32, 42, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
         parse_det((float *)outputs[0].buf, 64 ,84, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
-
-
+        nmshandling_cnt += pred_boxes.size();
+        decodecost += (getTimeInUs() - tic);
+        
+        tic = getTimeInUs();
         for (int i = 1; i < class_cnt+1; i++){
             const vector<size_t>& selected = nms_single_class (pred_boxes, pred_scores[i]);
 
@@ -488,9 +492,9 @@ int main(int argc, char** argv)
 
         // detfile << "\n";
         // cv::imwrite("./vis/" + img_name, orig_img);
+        nmscost += (getTimeInUs() - tic);
         outfile.close();
         rknn_outputs_release(ctx, 4, outputs);
-        postcost += (getTimeInUs() - tic);
     };
     // detfile.close();
 
@@ -503,11 +507,13 @@ int main(int argc, char** argv)
     if(model) {
         free(model);
     }
-    printf("preprocess costs %8.3fms\n", float(precost) / 1000.0f);
-    printf("input costs %8.3fms\n", float(inputcost) / 1000.0f);
-    printf("infer costs %8.3fms\n", float(infercost) / 1000.0f);
-    printf("output costs %8.3fms\n", float(outputcost) / 1000.0f);
-    printf("postprocess costs %8.3fms\n", float(postcost) / 1000.0f);
+    printf("preprocess costs %8.3fms\n", float(precost) / 1000.0f/ images_cnt);
+    printf("input costs %8.3fms\n", float(inputcost) / 1000.0f / images_cnt);
+    printf("infer costs %8.3fms\n", float(infercost) / 1000.0f / images_cnt);
+    printf("output costs %8.3fms\n", float(outputcost) / 1000.0f / images_cnt);
+    printf("decode anchors costs %8.3fms\n", float(decodecost) / 1000.0f / images_cnt);
+    printf("NMS costs %8.3fms\n", float(nmscost) / 1000.0f / images_cnt);
+    printf("average NMS handling count is %8.3f\n", float(nmshandling_cnt) / images_cnt);
 
     std::cout << "done" << std::endl;
 
