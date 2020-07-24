@@ -29,6 +29,7 @@ const int pad_right = 16;
 const int input_w = 672;
 const int input_h = 512;
 const float THRESHOLD = 0.001;
+// const float THRESHOLD = 1.0;
 
 // const int image_width = 640;
 

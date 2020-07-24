@@ -92,8 +92,8 @@ vector<size_t>
 nms_single_class (
   const PredictBoxes& boxes,
   const PredictScores& scores,
-  float confidence_threshold=0.0,
-  float iou_threshold=0.65)
+  float confidence_threshold=0.001,
+  float iou_threshold=0.5)
 {
   vector<size_t> desc_ind = argsort_descend (scores);
   vector<int> suppression;
@@ -313,6 +313,38 @@ void parse_det(float * an, const int an_h, const int an_w, const float an_s
     }
 }
 
+void parse_det_new(float * an, const int an_h, const int an_w, const float an_s
+            , vector<vector<float>> an_wh, PredictBoxes & pred_boxes, PredictScores * pred_scores
+            , int pad_top, int pad_left, int resize_w, int resize_h, int origin_height, int origin_width
+            ) {
+    float c_x, c_y, b_w, b_h, obj_conf, val;
+    for (int h = 0; h < an_h; h++) {
+        for (int w = 0; w < an_w; w++) {
+            for (int a = 0; a < 3; a++) {
+                obj_conf = an[(a * an_vec + 4) * an_h * an_w + h * an_w + w];
+                if (obj_conf > THRESHOLD) {
+                    BoxCornerEncoding box = {};
+                    c_x = (an[(a * an_vec + 0) * an_h * an_w + h * an_w + w] * 2.0 - 0.5 + w) * an_s;
+                    c_y = (an[(a * an_vec + 1) * an_h * an_w + h * an_w + w] * 2.0 - 0.5 + h) * an_s;
+                    b_w = pow((an[(a * an_vec + 2) * an_h * an_w + h * an_w + w] * 2.0), 2) * an_wh[a][0];
+                    b_h = pow((an[(a * an_vec + 3) * an_h * an_w + h * an_w + w] * 2.0), 2) * an_wh[a][1];
+                    box.ymin = clip((c_y - b_h / 2.0 - pad_top) / resize_h) * origin_height;
+                    box.xmin = clip((c_x - b_w / 2.0 - pad_left) / resize_w) * origin_width;
+                    box.ymax = clip((c_y + b_h / 2.0 - pad_top) / resize_h) * origin_height;
+                    box.xmax = clip((c_x + b_w / 2.0 - pad_left) / resize_w) * origin_width;
+                    pred_boxes.emplace_back (box);
+
+                    for (int pos = 5; pos < an_vec; pos++){
+                        val = an[(a * an_vec + pos) * an_h * an_w + h * an_w + w];
+                        pred_scores[pos - 4].emplace_back (obj_conf * val);
+                    }
+                } 
+
+            }
+        }
+    }
+}
+
 /*-------------------------------------------
                   Main Function
 -------------------------------------------*/
@@ -383,6 +415,7 @@ int main(int argc, char** argv)
     int nmscost = 0;
     int nmshandling_cnt = 0;
     for (int img_idx = 0; img_idx < images_cnt; img_idx++) {
+    // for (int img_idx = 0; img_idx < 27; img_idx++) {
         string img_name = img_names[img_idx];
         // if (img_name != "StereoVision_L_922887_32_0_1_7156.jpeg") {
         // if (img_name != "StereoVision_L_990964_10_0_0_5026_D_FakePoop_719_-149.jpeg") {
@@ -458,14 +491,15 @@ int main(int argc, char** argv)
         // detfile << "/workspace/centernet/data/baiguang/images/val/" + img_name;
         PredictBoxes  pred_boxes;
         PredictScores pred_scores[class_cnt+1];
-        parse_det((float *)outputs[2].buf, 16, 21, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
-        parse_det((float *)outputs[1].buf, 32, 42, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
-        parse_det((float *)outputs[0].buf, 64 ,84, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det_new((float *)outputs[2].buf, 16, 21, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det_new((float *)outputs[1].buf, 32, 42, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det_new((float *)outputs[0].buf, 64 ,84, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
         nmshandling_cnt += pred_boxes.size();
         decodecost += (getTimeInUs() - tic);
         
         tic = getTimeInUs();
         for (int i = 1; i < class_cnt+1; i++){
+            // printf("%d, %d", pred_boxes.size(), pred_scores[i].size());
             const vector<size_t>& selected = nms_single_class (pred_boxes, pred_scores[i]);
 
             for (size_t sel: selected)
