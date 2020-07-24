@@ -23,6 +23,7 @@
 #include "help.h"
 #include <math.h>
 // #include <algorithm>
+#include <sys/time.h>
 
 #include "opencv2/core/core.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
@@ -37,6 +38,14 @@ using namespace std;
 /*-------------------------------------------
                   Functions
 -------------------------------------------*/
+static inline uint64_t getTimeInUs() {
+    uint64_t time;
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    time = static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
+    return time;
+}
+
 template <typename T>
 std::vector<size_t>
 argsort_descend(const std::vector<T>& v)
@@ -264,7 +273,7 @@ static unsigned char *load_model(const char *filename, int *model_size)
 
 void parse_det(float * an, const int an_h, const int an_w, const float an_s
             , vector<vector<float>> an_wh, PredictBoxes & pred_boxes, PredictScores * pred_scores
-            , int pad_top, int image_height, int image_width, int origin_height, int origin_width
+            , int pad_top, int pad_left, int resize_w, int resize_h, int origin_height, int origin_width
             ) {
     float c_x, c_y, b_w, b_h, obj_conf;
     int class_id;
@@ -286,16 +295,16 @@ void parse_det(float * an, const int an_h, const int an_w, const float an_s
                     b_h = pow((b_h * 2.0), 2) * an_wh[c / an_vec][1];
                 } else if (c % an_vec == 4) {
                     obj_conf = val;
-                    if (obj_conf > 0.1) {
+                    if (obj_conf > 0.001) {
                         BoxCornerEncoding box = {};
-                        box.ymin = clip((c_y - b_h / 2.0 - pad_top) / image_height) * origin_height;
-                        box.xmin = clip((c_x - b_w / 2.0) / image_width) * origin_width;
-                        box.ymax = clip((c_y + b_h / 2.0 - pad_top) / image_height) * origin_height;
-                        box.xmax = clip((c_x + b_w / 2.0) / image_width) * origin_width;
+                        box.ymin = clip((c_y - b_h / 2.0 - pad_top) / resize_h) * origin_height;
+                        box.xmin = clip((c_x - b_w / 2.0 - pad_left) / resize_w) * origin_width;
+                        box.ymax = clip((c_y + b_h / 2.0 - pad_top) / resize_h) * origin_height;
+                        box.xmax = clip((c_x + b_w / 2.0 - pad_left) / resize_w) * origin_width;
                         pred_boxes.emplace_back (box);
                     }
                 } else {
-                    if (obj_conf > 0.1) {
+                    if (obj_conf > 0.001) {
                         pred_scores[c % an_vec - 4].emplace_back (obj_conf * val);
                     }
                 }
@@ -315,7 +324,7 @@ int main(int argc, char** argv)
     unsigned char *model;
     const char *model_path = "./yolov5s.rknn";
 
-
+    auto tic = getTimeInUs();
     // Load RKNN Model
     printf("Loading model ...\n");
     model = load_model(model_path, &model_len);
@@ -324,8 +333,10 @@ int main(int argc, char** argv)
         printf("rknn_init fail! ret=%d\n", ret);
         return -1;
     }
+    printf("Load model costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f);
 
     // Get Model Input Output Info
+    tic = getTimeInUs();
     rknn_input_output_num io_num;
     ret = rknn_query(ctx, RKNN_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
     if (ret != RKNN_SUCC) {
@@ -359,19 +370,26 @@ int main(int argc, char** argv)
         }
         printRKNNTensor(&(output_attrs[i]));
     }
+    printf("Prepare input/output costs %8.3fms\n", (getTimeInUs() - tic) / 1000.0f);
     // ofstream detfile;
     // string detfile_path = "./detfile.txt";
     // detfile.open(detfile_path.c_str(), ios::out | ios::trunc );
     // for (string img_name: img_names) {
+    int precost = 0;
+    int inputcost = 0;
+    int infercost = 0;
+    int outputcost = 0;
+    int postcost = 0;
     for (int img_idx = 0; img_idx < images_cnt; img_idx++) {
         string img_name = img_names[img_idx];
-        // if (img_name != "StereoVision_L_990964_10_0_0_5026_D_FakePoop_719_-149.jpeg") {
         // if (img_name != "StereoVision_L_922887_32_0_1_7156.jpeg") {
+        // if (img_name != "StereoVision_L_990964_10_0_0_5026_D_FakePoop_719_-149.jpeg") {
         //     continue;
         // }
         std::cout << img_name << std::endl;
         string img_path = val_dir + img_name;
         // Load image
+        tic = getTimeInUs();
         cv::Mat orig_img = cv::imread(img_path.c_str(), 1);
         cv::Mat img = orig_img.clone();
         if(!orig_img.data) {
@@ -380,11 +398,15 @@ int main(int argc, char** argv)
         }
         int origin_height = orig_img.rows;
         int origin_width = orig_img.cols;
-        int image_height = int(1.0 * image_width / origin_width * origin_height);
-        int pad_top = (image_width - image_height) / 2;
-        int pad_bottom = image_width - image_height - pad_top;
-        cv::resize(orig_img, img, cv::Size(image_width, image_height), (0, 0), (0, 0), cv::INTER_LINEAR);
-        cv::copyMakeBorder(img, img, pad_top, pad_bottom, 0, 0, cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+        // int image_height = int(1.0 * image_width / origin_width * origin_height);
+        // int pad_top = (image_width - image_height) / 2;
+        // int pad_bottom = image_width - image_height - pad_top;
+        cv::resize(orig_img, img, cv::Size(resize_w, resize_h), (0, 0), (0, 0), cv::INTER_AREA);
+        cv::copyMakeBorder(img, img, pad_top, pad_bottom, pad_left, pad_right, cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+        cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+        precost += (getTimeInUs() - tic);
+
+        tic = getTimeInUs();
         // printf("input image size is %d, %d\n", img.rows, img.cols);
         rknn_input inputs[1];
         memset(inputs, 0, sizeof(inputs));
@@ -399,7 +421,9 @@ int main(int argc, char** argv)
             printf("rknn_input_set fail! ret=%d\n", ret);
             return -1;
         }
+        inputcost += (getTimeInUs() - tic);
 
+        tic = getTimeInUs();
         // Run
         // printf("rknn_run\n");
         ret = rknn_run(ctx, nullptr);
@@ -407,7 +431,9 @@ int main(int argc, char** argv)
             printf("rknn_run fail! ret=%d\n", ret);
             return -1;
         }
-
+        infercost += (getTimeInUs() - tic);
+        
+        tic = getTimeInUs();
         // Get Output
         rknn_output outputs[3];
         memset(outputs, 0, sizeof(outputs));
@@ -419,7 +445,9 @@ int main(int argc, char** argv)
             printf("rknn_outputs_get fail! ret=%d\n", ret);
             return -1;
         }
+        outputcost += (getTimeInUs() - tic);
 
+        tic = getTimeInUs();
         // Post Process
         ofstream outfile;
         string tgtFile = "./txt/" + regex_replace(img_name, regex("jpeg"), "txt");
@@ -427,13 +455,13 @@ int main(int argc, char** argv)
         // std::cout << tgtFile << std::endl;
         // detfile << "/workspace/centernet/data/baiguang/images/val/" + img_name;
         PredictBoxes  pred_boxes;
-        PredictScores pred_scores[30];
-        parse_det((float *)outputs[2].buf, 20, 20, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, image_height, image_width, origin_height, origin_width);
-        parse_det((float *)outputs[1].buf, 40, 40, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, image_height, image_width, origin_height, origin_width);
-        parse_det((float *)outputs[0].buf, 80, 80, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, image_height, image_width, origin_height, origin_width);
+        PredictScores pred_scores[class_cnt+1];
+        parse_det((float *)outputs[2].buf, 16, 21, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det((float *)outputs[1].buf, 32, 42, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det((float *)outputs[0].buf, 64 ,84, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
 
 
-        for (int i = 1; i < 30; i++){
+        for (int i = 1; i < class_cnt+1; i++){
             const vector<size_t>& selected = nms_single_class (pred_boxes, pred_scores[i]);
 
             for (size_t sel: selected)
@@ -444,7 +472,7 @@ int main(int argc, char** argv)
             int y0 = pred_boxes[sel].ymin;
             int x1 = pred_boxes[sel].xmax;
             int y1 = pred_boxes[sel].ymax;
-            cv::rectangle(orig_img, cv::Point(x0, y0), cv::Point(x1, y1), kColorTable[i], 3);
+            // cv::rectangle(orig_img, cv::Point(x0, y0), cv::Point(x1, y1), kColorTable[i], 3);
             outfile << classname << " " << score << " ";
             outfile << x0 << " " << y0 << " " << x1 << " " << y1 << "\n";
         }
@@ -459,9 +487,10 @@ int main(int argc, char** argv)
             }
 
         // detfile << "\n";
-        cv::imwrite("./vis/" + img_name, orig_img);
+        // cv::imwrite("./vis/" + img_name, orig_img);
         outfile.close();
         rknn_outputs_release(ctx, 4, outputs);
+        postcost += (getTimeInUs() - tic);
     };
     // detfile.close();
 
@@ -474,6 +503,14 @@ int main(int argc, char** argv)
     if(model) {
         free(model);
     }
+    printf("preprocess costs %8.3fms\n", float(precost) / 1000.0f);
+    printf("input costs %8.3fms\n", float(inputcost) / 1000.0f);
+    printf("infer costs %8.3fms\n", float(infercost) / 1000.0f);
+    printf("output costs %8.3fms\n", float(outputcost) / 1000.0f);
+    printf("postprocess costs %8.3fms\n", float(postcost) / 1000.0f);
+
     std::cout << "done" << std::endl;
+
+
     return 0;
 }

@@ -19,11 +19,21 @@ const char *EVAL_FILE = "/userdata/rknn_ssd_demo/baiguang.txt";
 const int class_cnt = 29;
 const int an_vec = class_cnt + 1 + 4;
 const int an_c = an_vec * 3;
-const int image_width = 640;
 
-const int C = 29;
-const int H = 72;
-const int W = 96;
+const int resize_w = 640;
+const int resize_h = 480;
+const int pad_top = 16;
+const int pad_bottom = 16;
+const int pad_left = 16;
+const int pad_right = 16;
+const int input_w = 672;
+const int input_h = 512;
+
+// const int image_width = 640;
+
+// const int C = 29;
+// const int H = 72;
+// const int W = 96;
 const int images_cnt = 2109;
 
 struct BoxCornerEncoding
