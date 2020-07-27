@@ -38,6 +38,8 @@ const float THRESHOLD = 0.001;
 // const int W = 96;
 const int images_cnt = 2692;
 
+const bool PLOT = true;
+
 struct BoxCornerEncoding
 {
   float ymin;

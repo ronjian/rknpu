@@ -271,7 +271,7 @@ static unsigned char *load_model(const char *filename, int *model_size)
     return model;
 }
 
-void parse_det(float * an, const int an_h, const int an_w, const float an_s
+void parse_det_arch(float * an, const int an_h, const int an_w, const float an_s
             , vector<vector<float>> an_wh, PredictBoxes & pred_boxes, PredictScores * pred_scores
             , int pad_top, int pad_left, int resize_w, int resize_h, int origin_height, int origin_width
             ) {
@@ -313,7 +313,7 @@ void parse_det(float * an, const int an_h, const int an_w, const float an_s
     }
 }
 
-void parse_det_new(float * an, const int an_h, const int an_w, const float an_s
+void parse_det(float * an, const int an_h, const int an_w, const float an_s
             , vector<vector<float>> an_wh, PredictBoxes & pred_boxes, PredictScores * pred_scores
             , int pad_top, int pad_left, int resize_w, int resize_h, int origin_height, int origin_width
             ) {
@@ -407,7 +407,10 @@ int main(int argc, char** argv)
     // string detfile_path = "./detfile.txt";
     // detfile.open(detfile_path.c_str(), ios::out | ios::trunc );
     // for (string img_name: img_names) {
-    int precost = 0;
+    int readcost = 0;
+    int resizecost = 0;
+    int padcost = 0;
+    int cvtcost = 0;
     int inputcost = 0;
     int infercost = 0;
     int outputcost = 0;
@@ -433,13 +436,22 @@ int main(int argc, char** argv)
         }
         int origin_height = orig_img.rows;
         int origin_width = orig_img.cols;
+        readcost += (getTimeInUs() - tic);
+
+        tic = getTimeInUs();
         // int image_height = int(1.0 * image_width / origin_width * origin_height);
         // int pad_top = (image_width - image_height) / 2;
         // int pad_bottom = image_width - image_height - pad_top;
         cv::resize(orig_img, img, cv::Size(resize_w, resize_h), (0, 0), (0, 0), cv::INTER_AREA);
+        resizecost += (getTimeInUs() - tic);
+
+        tic = getTimeInUs();
         cv::copyMakeBorder(img, img, pad_top, pad_bottom, pad_left, pad_right, cv::BORDER_CONSTANT, cv::Scalar(114, 114, 114));
+        padcost += (getTimeInUs() - tic);
+
+        tic = getTimeInUs();
         cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
-        precost += (getTimeInUs() - tic);
+        cvtcost += (getTimeInUs() - tic);
 
         tic = getTimeInUs();
         // printf("input image size is %d, %d\n", img.rows, img.cols);
@@ -491,9 +503,9 @@ int main(int argc, char** argv)
         // detfile << "/workspace/centernet/data/baiguang/images/val/" + img_name;
         PredictBoxes  pred_boxes;
         PredictScores pred_scores[class_cnt+1];
-        parse_det_new((float *)outputs[2].buf, 16, 21, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
-        parse_det_new((float *)outputs[1].buf, 32, 42, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
-        parse_det_new((float *)outputs[0].buf, 64 ,84, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det((float *)outputs[2].buf, 16, 21, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det((float *)outputs[1].buf, 32, 42, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
+        parse_det((float *)outputs[0].buf, 64 ,84, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
         nmshandling_cnt += pred_boxes.size();
         decodecost += (getTimeInUs() - tic);
         
@@ -510,7 +522,10 @@ int main(int argc, char** argv)
             int y0 = pred_boxes[sel].ymin;
             int x1 = pred_boxes[sel].xmax;
             int y1 = pred_boxes[sel].ymax;
-            // cv::rectangle(orig_img, cv::Point(x0, y0), cv::Point(x1, y1), kColorTable[i], 3);
+            if (PLOT && score > 0.05) {
+                cv::rectangle(orig_img, cv::Point(x0, y0), cv::Point(x1, y1), kColorTable[i], 3);
+                cv::putText(orig_img, classname + ":" + to_string(score).substr(0, 4), cv::Point(x0, y0-2) ,0,1,cv::Scalar(225, 255, 255), 2);
+            }
             outfile << classname << " " << score << " ";
             outfile << x0 << " " << y0 << " " << x1 << " " << y1 << "\n";
         }
@@ -525,7 +540,9 @@ int main(int argc, char** argv)
             }
 
         // detfile << "\n";
-        // cv::imwrite("./vis/" + img_name, orig_img);
+        if (PLOT) {
+            cv::imwrite("./vis/" + img_name, orig_img);
+        }
         nmscost += (getTimeInUs() - tic);
         outfile.close();
         rknn_outputs_release(ctx, 4, outputs);
@@ -541,7 +558,10 @@ int main(int argc, char** argv)
     if(model) {
         free(model);
     }
-    printf("preprocess costs %8.3fms\n", float(precost) / 1000.0f/ images_cnt);
+    printf("read image costs %8.3fms\n", float(readcost) / 1000.0f/ images_cnt);
+    printf("resize image costs %8.3fms\n", float(resizecost) / 1000.0f/ images_cnt);
+    printf("padding image costs %8.3fms\n", float(padcost) / 1000.0f/ images_cnt);
+    printf("convert channel costs %8.3fms\n", float(cvtcost) / 1000.0f/ images_cnt);
     printf("input costs %8.3fms\n", float(inputcost) / 1000.0f / images_cnt);
     printf("infer costs %8.3fms\n", float(infercost) / 1000.0f / images_cnt);
     printf("output costs %8.3fms\n", float(outputcost) / 1000.0f / images_cnt);
