@@ -334,10 +334,27 @@ void parse_det(float * an, const int an_h, const int an_w, const float an_s
                     box.xmax = clip((c_x + b_w / 2.0 - pad_left) / resize_w) * origin_width;
                     pred_boxes.emplace_back (box);
 
-                    for (int pos = 5; pos < an_vec; pos++){
-                        val = an[(a * an_vec + pos) * an_h * an_w + h * an_w + w];
-                        pred_scores[pos - 4].emplace_back (obj_conf * val);
+                    if (cross_class_nms) {
+                        float max_score = 0.0;
+                        float score;
+                        float max_score_clsid;
+                        for (int pos = 5; pos < an_vec; pos++){
+                            val = an[(a * an_vec + pos) * an_h * an_w + h * an_w + w];
+                            score = obj_conf * val;
+                            if (score > max_score){
+                                max_score = score;
+                                max_score_clsid = pos - 4;
+                            }
+                        }
+                        pred_scores[0].emplace_back (max_score);
+                        pred_scores[1].emplace_back (max_score_clsid);
+                    } else {
+                        for (int pos = 5; pos < an_vec; pos++){
+                            val = an[(a * an_vec + pos) * an_h * an_w + h * an_w + w];
+                            pred_scores[pos - 4].emplace_back (obj_conf * val);
+                        }
                     }
+
                 } 
 
             }
@@ -497,12 +514,11 @@ int main(int argc, char** argv)
         tic = getTimeInUs();
         // Post Process
         ofstream outfile;
-        string tgtFile = "./txt/" + regex_replace(img_name, regex("jpeg"), "txt");
+        string tgtFile = txt_dir + regex_replace(img_name, regex("jpeg"), "txt");
         outfile.open(tgtFile.c_str(), ios::out | ios::trunc );
-        // std::cout << tgtFile << std::endl;
-        // detfile << "/workspace/centernet/data/baiguang/images/val/" + img_name;
         PredictBoxes  pred_boxes;
         PredictScores pred_scores[class_cnt+1];
+        
         parse_det((float *)outputs[2].buf, 16, 21, 32, {{214.0,99.0}, {287.0,176.0}, {376.0,365.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
         parse_det((float *)outputs[1].buf, 32, 42, 16, {{94.0,219.0}, {120.0,86.0}, {173.0,337.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
         parse_det((float *)outputs[0].buf, 64 ,84, 8, {{28.0,31.0}, {53.0,73.0}, {91.0,39.0}},pred_boxes,pred_scores,pad_top, pad_left, resize_w, resize_h, origin_height, origin_width);
@@ -510,43 +526,56 @@ int main(int argc, char** argv)
         decodecost += (getTimeInUs() - tic);
         
         tic = getTimeInUs();
-        for (int i = 1; i < class_cnt+1; i++){
-            // printf("%d, %d", pred_boxes.size(), pred_scores[i].size());
-            const vector<size_t>& selected = nms_single_class (pred_boxes, pred_scores[i]);
-
+        if (cross_class_nms) {
+            const vector<size_t>& selected = nms_single_class (pred_boxes, pred_scores[0], score_threshold, nms_iou);
             for (size_t sel: selected)
-            {
-            string classname = originLabelsMap[i];
-            float score = pred_scores[i][sel];
-            int x0 = pred_boxes[sel].xmin;
-            int y0 = pred_boxes[sel].ymin;
-            int x1 = pred_boxes[sel].xmax;
-            int y1 = pred_boxes[sel].ymax;
-            if (PLOT && score > 0.05) {
-                cv::rectangle(orig_img, cv::Point(x0, y0), cv::Point(x1, y1), kColorTable[i], 3);
-                cv::putText(orig_img, classname + ":" + to_string(score).substr(0, 4), cv::Point(x0, y0-2) ,0,1,cv::Scalar(225, 255, 255), 2);
+            {   
+                float score = pred_scores[0][sel];
+                int clsid = (int)pred_scores[1][sel];
+                string classname = originLabelsMap[clsid];
+                int x0 = pred_boxes[sel].xmin;
+                int y0 = pred_boxes[sel].ymin;
+                int x1 = pred_boxes[sel].xmax;
+                int y1 = pred_boxes[sel].ymax;
+                if (PLOT && score > score_threshold) {
+                    cv::rectangle(orig_img, cv::Point(x0, y0), cv::Point(x1, y1), kColorTable[clsid], 3);
+                    cv::putText(orig_img, classname + ":" + to_string(score).substr(0, 4), cv::Point(x0, y0-2) ,0,1,cv::Scalar(225, 255, 255), 2);
+                }
+                outfile << classname << " " << score << " ";
+                outfile << x0 << " " << y0 << " " << x1 << " " << y1 << "\n";
             }
-            outfile << classname << " " << score << " ";
-            outfile << x0 << " " << y0 << " " << x1 << " " << y1 << "\n";
+        } else {
+            for (int i = 1; i < class_cnt+1; i++){
+                // printf("%d, %d", pred_boxes.size(), pred_scores[i].size());
+                const vector<size_t>& selected = nms_single_class (pred_boxes, pred_scores[i], score_threshold, nms_iou);
+
+                for (size_t sel: selected)
+                {
+                    string classname = originLabelsMap[i];
+                    float score = pred_scores[i][sel];
+                    int x0 = pred_boxes[sel].xmin;
+                    int y0 = pred_boxes[sel].ymin;
+                    int x1 = pred_boxes[sel].xmax;
+                    int y1 = pred_boxes[sel].ymax;
+                    if (PLOT && score > score_threshold) {
+                        cv::rectangle(orig_img, cv::Point(x0, y0), cv::Point(x1, y1), kColorTable[i], 3);
+                        cv::putText(orig_img, classname + ":" + to_string(score).substr(0, 4), cv::Point(x0, y0-2) ,0,1,cv::Scalar(225, 255, 255), 2);
+                    }
+                    outfile << classname << " " << score << " ";
+                    outfile << x0 << " " << y0 << " " << x1 << " " << y1 << "\n";
+                }
+            }
         }
 
-
-            //    cout << "cls " << i << ":\n";
-            //    cout << "  ";
-            //    for (size_t sel : selected) {
-            //      cout << sel << "(" << pred_scores[i][sel] << ") ";
-            //    }
-            //    cout << "\n";
-            }
-
-        // detfile << "\n";
         if (PLOT) {
-            cv::imwrite("./vis/" + img_name, orig_img);
+            cv::imwrite(vis_dir + img_name, orig_img);
         }
+
+
         nmscost += (getTimeInUs() - tic);
         outfile.close();
         rknn_outputs_release(ctx, 4, outputs);
-    };
+    }
     // detfile.close();
 
     // Release rknn_outputs
