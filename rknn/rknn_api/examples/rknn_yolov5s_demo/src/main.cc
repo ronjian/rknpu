@@ -95,6 +95,7 @@ nms_single_class (
   float confidence_threshold=0.001,
   float iou_threshold=0.5)
 {
+//   std::cout << "=========" << std::endl;
   vector<size_t> desc_ind = argsort_descend (scores);
   vector<int> suppression;
 
@@ -113,7 +114,7 @@ nms_single_class (
 
   vector<size_t> selected;
   for (int i = 0; i <= last_elem; i++) {
-    if (suppression[i] < 0) {
+    if (suppression[i] == 99999) {
 //      cout << "index " << i << " in score index array is already suppressed.\n";
       // ++i;
       continue;
@@ -131,13 +132,14 @@ nms_single_class (
       const BoxCornerEncoding& box_j = boxes[jdx];
 
       float iou = compute_iou (cur_box, box_j);
+    //   std::cout << "i:" << i << ",j:" << j << ",idx:" << idx << ",jdx:" << jdx << ",iou:" << iou << std::endl;
       assert (iou >= 0.0);
       /*
        * if iou is above threshold, then suppress box_j.
        * otherwise box_j will be the next *new* box.
        */
       if (iou >= iou_threshold) {
-        suppression[j] *= -1;
+        suppression[j] = 99999;
       }
 
       ++j;
@@ -439,6 +441,8 @@ int main(int argc, char** argv)
         string img_name = img_names[img_idx];
         // if (img_name != "StereoVision_L_922887_32_0_1_7156.jpeg") {
         // if (img_name != "StereoVision_L_990964_10_0_0_5026_D_FakePoop_719_-149.jpeg") {
+        // if (img_name != "StereoVision_L_644600_10_0_0_97.jpeg"
+        //     && img_name != "StereoVision_L_341078_0_0_1_1046_D_Sock_-1237_1777.jpeg") {
         //     continue;
         // }
         std::cout << img_name << std::endl;
