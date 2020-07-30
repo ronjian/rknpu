@@ -415,7 +415,7 @@ int main(int argc, char **argv)
     // Load RKNN Model
     printf("Loading model ...\n");
     model = load_model(model_path, &model_len);
-    ret = rknn_init(&ctx, model, model_len, RKNN_FLAG_PRIOR_HIGH);
+    ret = rknn_init(&ctx, model, model_len, RKNN_FLAG_PRIOR_HIGH & RKNN_FLAG_COLLECT_PERF_MASK);
     if (ret < 0)
     {
         printf("rknn_init fail! ret=%d\n", ret);
@@ -561,6 +561,15 @@ int main(int argc, char **argv)
             return -1;
         }
         outputcost += (getTimeInUs() - tic);
+
+        // 查询网络各层运行时间
+        rknn_perf_detail perf_detail;
+        ret = rknn_query(ctx, RKNN_QUERY_PERF_DETAIL, &perf_detail, sizeof(rknn_perf_detail));
+        printf("each layer cost as:  %s\n", perf_detail.perf_data);
+        // 查询单帧推理的硬件执行时间
+        rknn_perf_run perf_run;
+        ret = rknn_query(ctx, RKNN_QUERY_PERF_RUN, &perf_run, sizeof(rknn_perf_run));
+        printf("single frame inference cost as %ld us\n", perf_run.run_duration);
 
         tic = getTimeInUs();
         // Post Process
