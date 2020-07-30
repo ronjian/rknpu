@@ -8,4 +8,10 @@ rknn/rknn_api/examples/rknn_centernet_demo/baiguang*
 **/txt/
 **/vis/
 
-**/txtv2/
+**/vis-v2/
+**/vis-v3/
+**/vis-v4/
+
+**/txt-v2/
+**/txt-v3/
+**/txt-v4/
