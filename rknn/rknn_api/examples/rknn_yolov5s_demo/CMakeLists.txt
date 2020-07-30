@@ -43,8 +43,17 @@ target_link_libraries(rknn_yolov5s_demo
 	${OPENCV_LIBS}
 )
 
+# gtest
+set(GTEST_PATH /workspace/rockchip/RV1126_RV1109/rv1126_rv1109/external/rknpu/rknn/rknn_api/examples/libs/googletest)
+include_directories(${GTEST_PATH}/googletest/include)
+file(GLOB GTEST_LIBS ${GTEST_PATH}/build/lib/*.so*)
+
+add_executable(runTests src/test.cc)
+target_link_libraries(runTests ${GTEST_LIBS})
+
 # install target and libraries
 set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/install/rknn_yolov5s_demo)
 install(TARGETS rknn_yolov5s_demo DESTINATION ./)
 install(PROGRAMS ${RKNN_API_LIB} DESTINATION lib)
 install(PROGRAMS ${OPENCV_LIBS} DESTINATION lib)
+install(PROGRAMS ${GTEST_LIBS} DESTINATION lib)

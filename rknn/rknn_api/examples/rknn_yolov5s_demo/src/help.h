@@ -29,16 +29,12 @@ const int pad_right = 16;
 const int input_w = 672;
 const int input_h = 512;
 const float THRESHOLD = 0.001;
-// const float score_threshold = 0.001;
 const float score_threshold = 0.1;
 const float nms_iou = 0.5;
 const bool cross_class_nms = false;
+const bool NMS_TEST_DATA = false;
 
-// const int image_width = 640;
 
-// const int C = 29;
-// const int H = 72;
-// const int W = 96;
 const int images_cnt = 2972;
 
 const bool PLOT = true;

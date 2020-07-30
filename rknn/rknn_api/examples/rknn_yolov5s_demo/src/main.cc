@@ -18,143 +18,22 @@
 #include <stdlib.h>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <regex>
 #include <sys/time.h>
-#include "help.h"
+// #include "help.h"
 #include <math.h>
 // #include <algorithm>
-#include <sys/time.h>
 
 #include "opencv2/core/core.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
 #include "rknn_api.h"
+#include "utils.cc"
 
 using namespace std;
 // using namespace cv;
-
-/*-------------------------------------------
-                  Functions
--------------------------------------------*/
-static inline uint64_t getTimeInUs()
-{
-    uint64_t time;
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    time = static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
-    return time;
-}
-
-template <typename T>
-std::vector<size_t>
-argsort_descend(const std::vector<T> &v)
-{
-    std::vector<size_t> indices(v.size());
-
-    size_t n = 0;
-    std::generate(indices.begin(), indices.end(), [&n] { return n++; });
-
-    std::sort(indices.begin(), indices.end(),
-              [&v](const size_t i, const size_t j) { return v[i] > v[j]; });
-
-    return indices;
-}
-
-float compute_iou(
-    const BoxCornerEncoding &lhs, const BoxCornerEncoding &rhs)
-{
-    float lhs_area = (lhs.ymax - lhs.ymin) * (lhs.xmax - lhs.xmin);
-    float rhs_area = (rhs.ymax - rhs.ymin) * (rhs.xmax - rhs.xmin);
-
-    if (lhs_area <= 0.0 || rhs_area <= 0.0)
-    {
-        return 0;
-    }
-
-    float intersection_ymin = std::max(lhs.ymin, rhs.ymin);
-    float intersection_xmin = std::max(lhs.xmin, rhs.xmin);
-    float intersection_ymax = std::min(lhs.ymax, rhs.ymax);
-    float intersection_xmax = std::min(lhs.xmax, rhs.xmax);
-
-    float dh = std::max(intersection_ymax - intersection_ymin, 0.0f);
-    float dw = std::max(intersection_xmax - intersection_xmin, 0.0f);
-
-    float intersection = dh * dw;
-
-    float area_union = lhs_area + rhs_area - intersection;
-
-    return intersection / area_union;
-}
-
-vector<size_t>
-nms_single_class(
-    const PredictBoxes &boxes,
-    const PredictScores &scores,
-    float confidence_threshold = 0.001,
-    float iou_threshold = 0.5)
-{
-    //   std::cout << "=========" << std::endl;
-    vector<size_t> desc_ind = argsort_descend(scores);
-    vector<int> suppression;
-
-    int last_elem = -1;
-    for (int i = 0; i < desc_ind.size(); i++)
-    {
-        size_t idx = desc_ind[i];
-        if (scores[idx] >= confidence_threshold)
-        {
-            last_elem = i;
-
-            suppression.push_back(i);
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    vector<size_t> selected;
-    for (int i = 0; i <= last_elem; i++)
-    {
-        if (suppression[i] == 99999)
-        {
-            //      cout << "index " << i << " in score index array is already suppressed.\n";
-            // ++i;
-            continue;
-        }
-
-        size_t idx = desc_ind[i]; /* box index i */
-        const BoxCornerEncoding &cur_box = boxes[idx];
-
-        selected.emplace_back(idx);
-
-        int j = i + 1;
-        while (j <= last_elem)
-        {
-            size_t jdx = desc_ind[j]; /* box index j */
-            const BoxCornerEncoding &box_j = boxes[jdx];
-
-            float iou = compute_iou(cur_box, box_j);
-            //   std::cout << "i:" << i << ",j:" << j << ",idx:" << idx << ",jdx:" << jdx << ",iou:" << iou << std::endl;
-            assert(iou >= 0.0);
-            /*
-       * if iou is above threshold, then suppress box_j.
-       * otherwise box_j will be the next *new* box.
-       */
-            if (iou >= iou_threshold)
-            {
-                suppression[j] = 99999;
-            }
-
-            ++j;
-        }
-
-        //i = j;
-    }
-
-    return selected;
-}
 
 map<int, cv::Scalar> kColorTable = {
     {1, cv::Scalar(0, 255, 0)},
@@ -220,42 +99,9 @@ map<string, int> classname2id = {
     {"sock", 28},
     {"fake poop b", 29},
 };
-
-struct Det
-{
-    float c_x;
-    float c_y;
-    float b_w;
-    float b_h;
-    float score;
-    int class_id;
-};
-
-//TODO
-float clip(float val)
-{
-    float res;
-    if (val > 1.0)
-    {
-        res = 1.0;
-    }
-    else
-    {
-        res = val;
-    }
-
-    if (val < 0.0)
-    {
-        res = 0.0;
-    }
-    else
-    {
-        res = val;
-    }
-
-    return res;
-}
-
+/*-------------------------------------------
+                  Functions
+-------------------------------------------*/
 static void printRKNNTensor(rknn_tensor_attr *attr)
 {
     printf("index=%d name=%s n_dims=%d dims=[%d %d %d %d] n_elems=%d size=%d fmt=%d type=%d qnt_type=%d fl=%d zp=%d scale=%f\n",
@@ -484,10 +330,13 @@ int main(int argc, char **argv)
         string img_name = img_names[img_idx];
         // if (img_name != "StereoVision_L_922887_32_0_1_7156.jpeg") {
         // if (img_name != "StereoVision_L_990964_10_0_0_5026_D_FakePoop_719_-149.jpeg") {
-        // if (img_name != "StereoVision_L_644600_10_0_0_97.jpeg"
-        //     && img_name != "StereoVision_L_341078_0_0_1_1046_D_Sock_-1237_1777.jpeg") {
-        //     continue;
-        // }
+        if (NMS_TEST_DATA)
+        {
+            if (img_name != "StereoVision_L_644600_10_0_0_97.jpeg") {
+                continue;
+            }
+        }
+
         std::cout << img_name << std::endl;
         string img_path = val_dir + img_name;
         // Load image
@@ -611,8 +460,44 @@ int main(int argc, char **argv)
         {
             for (int i = 1; i < class_cnt + 1; i++)
             {
-                // printf("%d, %d", pred_boxes.size(), pred_scores[i].size());
+                // printf("pred_boxes.size: %d, pred_scores[i].size: %d\n", pred_boxes.size(), pred_scores[i].size());
                 const vector<size_t> &selected = nms_single_class(pred_boxes, pred_scores[i], score_threshold, nms_iou);
+                // printf("selected.size: %d\n", selected.size());
+
+                // prepare for NMS unit test data
+                if (NMS_TEST_DATA)
+                {
+                    if (selected.size() >= 2)
+                    {
+                        cout << "score_threshold:" << score_threshold << ", nms_iou:" << nms_iou << endl;
+                        // cout << "pred_boxes.size(): " << pred_boxes.size() << endl;
+                        // cout << "pred_scores[i].size(): " << pred_scores[i].size() << endl;
+
+                        ofstream pred_boxes_file;
+                        pred_boxes_file.open("./pred_boxes.dat", ios::out | ios::trunc );
+                        for (auto pred_box: pred_boxes)
+                        {
+                            pred_boxes_file << pred_box.xmin << "," << pred_box.ymin << "," << pred_box.xmax << "," << pred_box.ymax << endl;
+                        }
+                        pred_boxes_file.close();
+
+                        ofstream pred_scores_file;
+                        pred_scores_file.open("./pred_scores.dat", ios::out | ios::trunc );
+                        for (auto pred_score: pred_scores[i]) {
+                            pred_scores_file << fixed << setw( 8 ) << setprecision( 6 ) << pred_score << endl;
+                        }
+                        pred_scores_file.close();
+
+                        ofstream selected_file;
+                        selected_file.open("./selected.dat", ios::out | ios::trunc );
+                        for (auto sel: selected) {
+                            selected_file << sel << endl;
+                        }
+                        selected_file.close();
+
+                    }
+                }
+                
 
                 for (size_t sel : selected)
                 {
