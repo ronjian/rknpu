@@ -1,0 +1,4 @@
+目录nms-test-data的生成过程：
+    测试依据：torchvision.ops.boxes.nms
+    版本：pytorch 1.5.1, torchvision 0.6.0a0+35d732a
+    从neice数据中，记录NMS前后的数据
