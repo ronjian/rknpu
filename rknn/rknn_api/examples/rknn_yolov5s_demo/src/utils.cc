@@ -27,7 +27,6 @@ static inline uint64_t getTimeInUs()
     return time;
 }
 
-
 template <typename T>
 std::vector<size_t>
 argsort_descend(const std::vector<T> &v)
@@ -138,8 +137,6 @@ nms_single_class(
     return selected;
 }
 
-
-
 struct Det
 {
     float c_x;
@@ -174,4 +171,3 @@ float clip(float val)
 
     return res;
 }
-

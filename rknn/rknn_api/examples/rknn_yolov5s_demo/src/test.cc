@@ -5,17 +5,17 @@
 #include <regex>
 #include "string.h"
 
-
 using namespace std;
 
-static void split(const std::string& source, std::vector<std::string>& tokens, const string& delimiter = " ") {
+static void split(const std::string &source, std::vector<std::string> &tokens, const string &delimiter = " ")
+{
     regex re(delimiter);
-    copy(sregex_token_iterator(source.begin(), source.end(),re,-1), 
-        sregex_token_iterator(),
-        back_inserter(tokens));
+    copy(sregex_token_iterator(source.begin(), source.end(), re, -1),
+         sregex_token_iterator(),
+         back_inserter(tokens));
 }
 
-// TEST(SquareRootTest, PositiveNos) { 
+// TEST(SquareRootTest, PositiveNos) {
 //     ASSERT_EQ(6, squareRoot(36.0));
 //     ASSERT_EQ(18.0, squareRoot(324.0));
 //     ASSERT_EQ(25.4, squareRoot(645.16));
@@ -27,25 +27,25 @@ static void split(const std::string& source, std::vector<std::string>& tokens, c
 //     ASSERT_EQ(-1.0, squareRoot(-0.2));
 // }
 
-TEST(NMSTest, IOU05THRES01) {
+TEST(NMSTest, IOU05THRES01)
+{
     const int testCnt = 2407;
     for (int i = 1; i <= testCnt; i++)
     {
         std::cout << "testing idx: " << to_string(i) << std::endl;
         char buffer[256];
         PredictScores pred_scores;
-        ifstream  pred_scores_file;
-        pred_scores_file.open("./nms-test-data/pred_scores_" + to_string(i) + ".dat", ios::in );
+        ifstream pred_scores_file;
+        pred_scores_file.open("./nms-test-data/pred_scores_" + to_string(i) + ".dat", ios::in);
         while (!pred_scores_file.eof())
         {
-            pred_scores_file.getline(buffer,256);
+            pred_scores_file.getline(buffer, 256);
             string s_buf = buffer;
-            if (!s_buf.empty()) 
+            if (!s_buf.empty())
             {
                 float score = atof(buffer);
                 pred_scores.push_back(score);
             }
-
         }
         pred_scores_file.close();
 
@@ -61,7 +61,6 @@ TEST(NMSTest, IOU05THRES01) {
                 size_t sel = atoi(buffer);
                 selected.push_back(sel);
             }
-
         }
         selected_file.close();
 
@@ -73,7 +72,8 @@ TEST(NMSTest, IOU05THRES01) {
         {
             pred_boxes_file.getline(buffer, 256);
             string str_buf = buffer;
-            if (!str_buf.empty()) {
+            if (!str_buf.empty())
+            {
                 vector<std::string> tokens;
                 split(buffer, tokens, ",");
                 assert(tokens.size() == 4);
@@ -85,15 +85,15 @@ TEST(NMSTest, IOU05THRES01) {
                 pred_boxes.push_back(box);
             }
         }
-        
+
         ASSERT_EQ(pred_boxes.size(), pred_scores.size());
-        EXPECT_EQ (selected, nms_single_class(pred_boxes, pred_scores, 0.0f, 0.5f));
+        EXPECT_EQ(selected, nms_single_class(pred_boxes, pred_scores, 0.0f, 0.5f));
         // ASSERT_EQ (selected, nms_single_class(pred_boxes, pred_scores, 0.0f, 0.5f));
     }
-
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

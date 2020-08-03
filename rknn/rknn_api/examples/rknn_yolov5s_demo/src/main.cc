@@ -332,7 +332,8 @@ int main(int argc, char **argv)
         // if (img_name != "StereoVision_L_990964_10_0_0_5026_D_FakePoop_719_-149.jpeg") {
         if (NMS_TEST_DATA)
         {
-            if (img_name != "StereoVision_L_644600_10_0_0_97.jpeg") {
+            if (img_name != "StereoVision_L_644600_10_0_0_97.jpeg")
+            {
                 continue;
             }
         }
@@ -474,30 +475,30 @@ int main(int argc, char **argv)
                         // cout << "pred_scores[i].size(): " << pred_scores[i].size() << endl;
 
                         ofstream pred_boxes_file;
-                        pred_boxes_file.open("./pred_boxes.dat", ios::out | ios::trunc );
-                        for (auto pred_box: pred_boxes)
+                        pred_boxes_file.open("./pred_boxes.dat", ios::out | ios::trunc);
+                        for (auto pred_box : pred_boxes)
                         {
                             pred_boxes_file << pred_box.xmin << "," << pred_box.ymin << "," << pred_box.xmax << "," << pred_box.ymax << endl;
                         }
                         pred_boxes_file.close();
 
                         ofstream pred_scores_file;
-                        pred_scores_file.open("./pred_scores.dat", ios::out | ios::trunc );
-                        for (auto pred_score: pred_scores[i]) {
-                            pred_scores_file << fixed << setw( 8 ) << setprecision( 6 ) << pred_score << endl;
+                        pred_scores_file.open("./pred_scores.dat", ios::out | ios::trunc);
+                        for (auto pred_score : pred_scores[i])
+                        {
+                            pred_scores_file << fixed << setw(8) << setprecision(6) << pred_score << endl;
                         }
                         pred_scores_file.close();
 
                         ofstream selected_file;
-                        selected_file.open("./selected.dat", ios::out | ios::trunc );
-                        for (auto sel: selected) {
+                        selected_file.open("./selected.dat", ios::out | ios::trunc);
+                        for (auto sel : selected)
+                        {
                             selected_file << sel << endl;
                         }
                         selected_file.close();
-
                     }
                 }
-                
 
                 for (size_t sel : selected)
                 {
