@@ -13,8 +13,8 @@ using namespace std;
 // const int origin_width = 1280;
 // const int origin_height = 960;
 const string val_dir = "/userdata/rknn_yolov5s_demo/val_data_0728/";
-const string txt_dir = "./txt_0728/";
-const string vis_dir = "./vis_0728/";
+const string txt_dir = "./txt/";
+const string vis_dir = "./vis/";
 const char *EVAL_FILE = "/userdata/rknn_ssd_demo/baiguang.txt";
 const int class_cnt = 29;
 const int an_vec = class_cnt + 1 + 4;
@@ -37,7 +37,7 @@ const bool NMS_TEST_DATA = false;
 
 const int images_cnt = 2972;
 
-const bool PLOT = true;
+const bool PLOT = false;
 
 struct BoxCornerEncoding
 {
