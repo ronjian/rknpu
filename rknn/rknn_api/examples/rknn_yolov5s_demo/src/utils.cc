@@ -9,14 +9,6 @@
 
 using namespace std;
 
-// double squareRoot(const double a) {
-//     double b = sqrt(a);
-//     if(b != b) { // nan check
-//         return -1.0;
-//     }else{
-//         return sqrt(a);
-//     }
-// }
 
 static inline uint64_t getTimeInUs()
 {
@@ -98,7 +90,7 @@ nms_single_class(
     vector<size_t> selected;
     for (int i = 0; i <= last_elem; i++)
     {
-        if (suppression[i] == 99999)
+        if (suppression[i] == -99)
         {
             //      cout << "index " << i << " in score index array is already suppressed.\n";
             // ++i;
@@ -120,12 +112,12 @@ nms_single_class(
             //   std::cout << "i:" << i << ",j:" << j << ",idx:" << idx << ",jdx:" << jdx << ",iou:" << iou << std::endl;
             assert(iou >= 0.0);
             /*
-       * if iou is above threshold, then suppress box_j.
-       * otherwise box_j will be the next *new* box.
-       */
-            if (iou >= iou_threshold)
+            * if iou is above threshold, then suppress box_j.
+            * otherwise box_j will be the next *new* box.
+            */
+            if (iou >= iou_threshold && suppression[j] != -99)
             {
-                suppression[j] = 99999;
+                suppression[j] = -99;
             }
 
             ++j;
