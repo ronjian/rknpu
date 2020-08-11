@@ -378,6 +378,8 @@ int main(int argc, char **argv)
         inputs[0].fmt = RKNN_TENSOR_NHWC;
         inputs[0].buf = img.data;
 
+        printf("input size is: %d\n", inputs[0].size);
+
         ret = rknn_inputs_set(ctx, io_num.n_input, inputs);
         if (ret < 0)
         {
@@ -404,6 +406,7 @@ int main(int argc, char **argv)
         outputs[0].want_float = 1;
         outputs[1].want_float = 1;
         outputs[2].want_float = 1;
+
         ret = rknn_outputs_get(ctx, io_num.n_output, outputs, NULL);
         if (ret < 0)
         {
@@ -411,6 +414,10 @@ int main(int argc, char **argv)
             return -1;
         }
         outputcost += (getTimeInUs() - tic);
+
+        printf("output1 size is: %d\n", outputs[0].size);
+        printf("output2 size is: %d\n", outputs[1].size);
+        printf("output3 size is: %d\n", outputs[2].size);
 
         // 查询网络各层运行时间
         rknn_perf_detail perf_detail;
