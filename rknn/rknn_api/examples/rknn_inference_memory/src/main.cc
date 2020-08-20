@@ -159,8 +159,7 @@ int main(int argc, char** argv)
     float setinput_cost = 0.0;
     float inference_cost = 0.0;
     float getoutput_cost = 0.0;
-    while (1) {
-    // for (int i = 0; i < loop_count; i++){
+    for (int i = 0; i < loop_count; i++){
         // Set Input Data
         tic = getTimeInUs();
         // rknn_input inputs[1];
